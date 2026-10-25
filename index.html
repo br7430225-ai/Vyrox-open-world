@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>VYROX OPEN WORLD — Prototype</title>
+<style>
+  :root{color-scheme:dark}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#87a8b8;font-family:system-ui,Arial,sans-serif;touch-action:none}
+  #game{position:fixed;inset:0}
+  canvas{display:block;width:100%;height:100%}
+  #hud{position:fixed;inset:0;pointer-events:none;color:white;text-shadow:0 2px 5px #000; padding: max(12px,env(safe-area-inset-top)) 12px 12px}
+  .panel{background:#101820bb;border:1px solid #ffffff40;border-radius:12px;padding:9px 12px;backdrop-filter:blur(6px)}
+  #brand{position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;font-weight:900;letter-spacing:2px;font-size:14px}
+  #stats{position:absolute;top:max(52px,calc(env(safe-area-inset-top) + 40px));left:12px;font-size:11px;line-height:1.5}
+  #help{position:absolute;top:max(12px,env(safe-area-inset-top));right:12px;max-width:44vw;text-align:right;font-size:11px}
+  #toast{position:absolute;top:22%;left:50%;transform:translateX(-50%);font-weight:800;font-size:13px;background:#101820cc;padding:8px 13px;border-radius:20px;opacity:0;transition:opacity .25s;white-space:nowrap}
+  #controls{position:fixed;inset:0;pointer-events:none}
+  #stickArea{position:absolute;left:18px;bottom:max(20px,env(safe-area-inset-bottom));width:142px;height:142px;pointer-events:auto;touch-action:none}
+  #stickBase{position:absolute;inset:0;border-radius:50%;background:#10182055;border:2px solid #ffffff70}
+  #stickKnob{position:absolute;width:58px;height:58px;left:42px;top:42px;border-radius:50%;background:#dce8eeaa;border:2px solid #fff}
+  #buttons{position:absolute;right:14px;bottom:max(22px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(2,64px);gap:10px;pointer-events:auto}
+  .btn{height:58px;border-radius:50%;border:1px solid #ffffffaa;background:#10182099;color:white;font-weight:800;font-size:11px;touch-action:none;box-shadow:0 3px 10px #0005}
+  .btn:active{background:#e6f2ffbb;color:#111}
+  #vehicleBtn{position:absolute;right:18px;bottom:max(166px,calc(env(safe-area-inset-bottom) + 158px));width:72px;height:48px;border-radius:14px;pointer-events:auto}
+  #resetBtn{position:absolute;right:12px;top:100px;width:70px;height:34px;border-radius:9px;pointer-events:auto}
+  #loading{position:fixed;inset:0;display:grid;place-items:center;background:#111c26;color:white;text-align:center;padding:24px;z-index:5}
+  #loading small{color:#bac8d3}
+  @media(min-width:800px){#stickArea{width:160px;height:160px}#stickKnob{left:49px;top:49px}#buttons{right:28px;bottom:28px}.btn{height:64px;width:64px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="loading"><div><h2>VYROX OPEN WORLD</h2><p id="loadText">Loading 3D city prototype…</p><small>Requires internet for the Three.js library on first load.</small></div></div>
+<div id="hud">
+  <div id="brand" class="panel">VYROX <span style="color:#83d7ff">OPEN WORLD</span></div>
+  <div id="stats" class="panel">CITY DISTRICT · PROTOTYPE<br><span id="vehicleLabel">ON FOOT</span><br>Speed: <span id="speed">0</span></div>
+  <div id="help" class="panel">Drag right side to look<br>Left stick to move<br>Explore the city</div>
+  <div id="toast">Welcome to VYROX</div>
+</div>
+<div id="controls">
+  <div id="stickArea"><div id="stickBase"></div><div id="stickKnob"></div></div>
+  <button id="vehicleBtn" class="btn">ENTER CAR</button>
+  <div id="buttons">
+    <button class="btn" id="jumpBtn">JUMP</button>
+    <button class="btn" id="runBtn">RUN</button>
+    <button class="btn" id="hornBtn">HORN</button>
+    <button class="btn" id="exitBtn">EXIT</button>
+  </div>
+  <button class="btn" id="resetBtn">RESET</button>
+</div>
+<script type="module">
+const loadText = document.querySelector('#loadText');
+try {
+ const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js');
+ const scene = new THREE.Scene();
+ scene.background = new THREE.Color(0x9fc3d4);
+ scene.fog = new THREE.Fog(0x9fc3d4, 65, 250);
+ const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, .1, 500);
+ const renderer = new THREE.WebGLRenderer({antialias:false, powerPreference:'low-power'});
+ renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+ renderer.setSize(innerWidth,innerHeight);
+ renderer.shadowMap.enabled = false;
+ renderer.outputColorSpace = THREE.SRGBColorSpace;
+ document.querySelector('#game').appendChild(renderer.domElement);
+
+ scene.add(new THREE.HemisphereLight(0xd9efff,0x6a5947,2.0));
+ const sun = new THREE.DirectionalLight(0xffe2b8,2.1); sun.position.set(-45,70,25); scene.add(sun);
+
+ const mat=(color,roughness=1)=>new THREE.MeshStandardMaterial({color,roughness});
+ const groundMat=mat(0x777b72), roadMat=mat(0x343a40), sidewalkMat=mat(0xb5ad9b), lineMat=mat(0xe5d8a7);
+ const boxGeo=new THREE.BoxGeometry(1,1,1);
+ function box(parent, x,y,z, sx,sy,sz, material){
+   const m=new THREE.Mesh(boxGeo,material);m.position.set(x,y,z);m.scale.set(sx,sy,sz);parent.add(m);return m;
+ }
+ // Large ground and city grid
+ box(scene,0,-.35,0,420,.5,420,groundMat);
+ const roadW=12, blockSize=34, gridN=5, citySpan=gridN*blockSize;
+ for(let i=-gridN;i<=gridN;i++){
+   const p=i*blockSize;
+   box(scene,p,.005,0,roadW,.04,citySpan*2+roadW,roadMat);
+   box(scene,0,.006,p,citySpan*2+roadW,.04,roadW,roadMat);
+   // road edge lines
+   for(const side of [-1,1]){
+     box(scene,p+side*(roadW/2-.25),.03,0,.12,.025,citySpan*2+roadW,lineMat);
+     box(scene,0,.03,p+side*(roadW/2-.25),citySpan*2+roadW,.025,.12,lineMat);
+   }
+   // dashed center markings
+   for(let d=-citySpan;d<citySpan;d+=9){
+     box(scene,p,.035,d, .16,.025,3.5,lineMat);
+     box(scene,d,.035,p,3.5,.025,.16,lineMat);
+   }
+ }
+ // sidewalks and buildings in blocks
+ const buildingMats=[0xc7b8a2,0xb9c7c8,0xd5c9b6,0x9eaca9,0xd4d0c4,0xb7a99d].map(c=>mat(c));
+ const windowMats=[0x344d5b,0x476674,0x273b45].map(c=>mat(c,.55));
+ let seed=90210;
+ function rand(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
+ for(let gx=-gridN;gx<gridN;gx++) for(let gz=-gridN;gz<gridN;gz++){
+   const cx=(gx+.5)*blockSize, cz=(gz+.5)*blockSize;
+   // leave starting block more open
+   if(Math.abs(cx)<20 && Math.abs(cz)<20) continue;
+   box(scene,cx,.12,cz,blockSize-13,.22,blockSize-13,sidewalkMat);
+   const count=2+Math.floor(rand()*3);
+   for(let b=0;b<count;b++){
+     const w=5+rand()*8, dep=5+rand()*8, h=7+rand()*25;
+     const x=cx+(rand()-.5)*(blockSize-16), z=cz+(rand()-.5)*(blockSize-16);
+     const building=box(scene,x,h/2+.22,z,w,h,dep,buildingMats[Math.floor(rand()*buildingMats.length)]);
+     // roof parapet
+     box(scene,x,h+.35,z,w+.3,.35,dep+.3,buildingMats[Math.floor(rand()*buildingMats.length)]);
+     // simple front window strips facing camera-ish, limited polygons
+     const rows=Math.max(2,Math.floor(h/3.3));
+     for(let r=0;r<rows;r++){
+       const yy=1.5+r*2.6;
+       if(yy>h-1) break;
+       for(let wx=-1;wx<=1;wx++){
+         if(rand()<.25) continue;
+         box(scene,x+wx*w*.25,yy+.22,z+dep/2+.012,Math.max(.5,w*.13),.9,.035,windowMats[Math.floor(rand()*windowMats.length)]);
+       }
+     }
+   }
+ }
+ // Street trees: trunk + green crowns, kept sparse for mobile
+ const trunkMat=mat(0x64442d), leafMats=[mat(0x416b45),mat(0x527b4b),mat(0x66824d)];
+ const trunkGeo=new THREE.CylinderGeometry(.18,.28,2.4,6), crownGeo=new THREE.IcosahedronGeometry(1.35,0);
+ for(let i=-gridN;i<=gridN;i++) for(let j=-gridN;j<=gridN;j++){
+   if(rand()>.42) continue;
+   const x=i*blockSize+(rand()-.5)*7, z=j*blockSize+(rand()-.5)*7;
+   if(Math.abs(x)<15&&Math.abs(z)<15) continue;
+   const trunk=new THREE.Mesh(trunkGeo,trunkMat);trunk.position.set(x,1.2,z);scene.add(trunk);
+   const crown=new THREE.Mesh(crownGeo,leafMats[Math.floor(rand()*leafMats.length)]);crown.position.set(x,3.0,z);crown.scale.set(1,1.15,1);scene.add(crown);
+ }
+ // Player: simple stylized low-poly human, third-person controller
+ const player=new THREE.Group();scene.add(player);
+ const skin=mat(0xc58d69), shirt=mat(0x202b42), pants=mat(0x24262b), shoes=mat(0x111418), hair=mat(0x191715);
+ const torso=box(player,0,1.42,0,.8,.95,.42,shirt);
+ const head=new THREE.Mesh(new THREE.SphereGeometry(.28,8,6),skin);head.position.y=2.12;player.add(head);
+ const hairCap=new THREE.Mesh(new THREE.SphereGeometry(.29,8,5),hair);hairCap.position.set(0,2.27,-.015);hairCap.scale.set(1,.65,1);player.add(hairCap);
+ const armGeo=new THREE.BoxGeometry(.22,.78,.24), legGeo=new THREE.BoxGeometry(.28,.8,.3);
+ const armL=new THREE.Mesh(armGeo,shirt),armR=new THREE.Mesh(armGeo,shirt);armL.position.set(-.54,1.42,0);armR.position.set(.54,1.42,0);player.add(armL,armR);
+ const legL=new THREE.Mesh(legGeo,pants),legR=new THREE.Mesh(legGeo,pants);legL.position.set(-.22,.53,0);legR.position.set(.22,.53,0);player.add(legL,legR);
+ const footL=box(player,-.22,.12,.09,.3,.2,.48,shoes),footR=box(player,.22,.12,.09,.3,.2,.48,shoes);
+ player.position.set(0,0,0);
+ // vehicle parked nearby, simple driveable placeholder car
+ const car=new THREE.Group();scene.add(car);car.position.set(5,0,4);car.rotation.y=Math.PI*.25;
+ const carBody=box(car,0,.75,0,2.15,.65,4,mat(0x2c6f95));
+ box(car,0,1.25,-.15,1.65,.65,1.9,mat(0x8ba8b7,.45));
+ const wheelMat=mat(0x151719);
+ for(const x of [-1.08,1.08])for(const z of [-1.25,1.25]){
+   const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.38,.38,.22,8),wheelMat);wheel.rotation.z=Math.PI/2;wheel.position.set(x,.38,z);car.add(wheel);
+ }
+ // bike placeholder parked farther along street
+ const bike=new THREE.Group();scene.add(bike);bike.position.set(-6,0,5);
+ const bikeFrame=box(bike,0,.85,0,.22,.22,1.35,mat(0x9c2424));
+ for(const z of [-.58,.58]){const wh=new THREE.Mesh(new THREE.TorusGeometry(.32,.07,5,10),wheelMat);wh.rotation.y=Math.PI/2;wh.position.set(0,.35,z);bike.add(wh)}
+ box(bike,0,1.05,-.1,.5,.22,.55,mat(0x222629));
+ // input state
+ const state={forward:0,side:0,running:false,jump:false,vehicle:null,velY:0,yaw:0,cameraYaw:0,cameraPitch:.18,lookPointer:null,lastX:0,lastY:0};
+ const stickArea=document.querySelector('#stickArea'), knob=document.querySelector('#stickKnob');
+ let stickId=null,stickCenter={x:0,y:0};
+ function stickStart(e){e.preventDefault();stickId=e.pointerId;stickArea.setPointerCapture(stickId);const r=stickArea.getBoundingClientRect();stickCenter={x:r.left+r.width/2,y:r.top+r.height/2};stickMove(e)}
+ function stickMove(e){if(e.pointerId!==stickId)return;const dx=e.clientX-stickCenter.x,dy=e.clientY-stickCenter.y,max=48,len=Math.hypot(dx,dy)||1,scale=Math.min(1,max/len);const nx=dx*scale,ny=dy*scale;knob.style.transform=`translate(${nx}px,${ny}px)`;state.side=nx/max;state.forward=-ny/max}
+ function stickEnd(e){if(e.pointerId!==stickId)return;stickId=null;state.side=state.forward=0;knob.style.transform='translate(0,0)'}
+ stickArea.addEventListener('pointerdown',stickStart);stickArea.addEventListener('pointermove',stickMove);stickArea.addEventListener('pointerup',stickEnd);stickArea.addEventListener('pointercancel',stickEnd);
+ // right half drag camera look
+ renderer.domElement.addEventListener('pointerdown',e=>{if(e.clientX<innerWidth*.38)return;state.lookPointer=e.pointerId;state.lastX=e.clientX;state.lastY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId)});
+ renderer.domElement.addEventListener('pointermove',e=>{if(state.lookPointer!==e.pointerId)return;const dx=e.clientX-state.lastX,dy=e.clientY-state.lastY;state.lastX=e.clientX;state.lastY=e.clientY;state.cameraYaw-=dx*.006;state.cameraPitch=Math.max(-.05,Math.min(.65,state.cameraPitch+dy*.004)});
+ function lookEnd(e){if(state.lookPointer===e.pointerId)state.lookPointer=null}
+ renderer.domElement.addEventListener('pointerup',lookEnd);renderer.domElement.addEventListener('pointercancel',lookEnd);
+ const toast=document.querySelector('#toast');let toastTimer;
+ function showToast(t){toast.textContent=t;toast.style.opacity=1;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.style.opacity=0,1700)}
+ const held={jump:false};
+ document.querySelector('#runBtn').addEventListener('pointerdown',e=>{e.preventDefault();state.running=true});
+ ['pointerup','pointercancel','pointerleave'].forEach(ev=>document.querySelector('#runBtn').addEventListener(ev,()=>state.running=false));
+ document.querySelector('#jumpBtn').addEventListener('pointerdown',e=>{e.preventDefault();if(!state.vehicle&&player.position.y<.05)state.velY=6.2});
+ document.querySelector('#hornBtn').addEventListener('pointerdown',e=>{e.preventDefault();showToast(state.vehicle?'Beep beep!':'Find a vehicle to use the horn')});
+ document.querySelector('#vehicleBtn').addEventListener('click',()=>{
+   if(state.vehicle){state.vehicle=null;player.visible=true;player.position.x+=2.4;showToast('Exited vehicle');}
+   else{
+     const dc=player.position.distanceTo(car.position),db=player.position.distanceTo(bike.position);
+     if(Math.min(dc,db)>5){showToast('Move closer to the car or bike');return}
+     state.vehicle=dc<db?car:bike;player.visible=false;showToast(dc<db?'Car selected — drive around':'Bike selected — ride around');
+   }
+ });
+ document.querySelector('#exitBtn').addEventListener('click',()=>{if(state.vehicle){state.vehicle=null;player.visible=true;player.position.x+=2.4;showToast('Exited vehicle')}else showToast('You are on foot')});
+ document.querySelector('#resetBtn').addEventListener('click',()=>{state.vehicle=null;player.visible=true;player.position.set(0,0,0);state.yaw=0;state.cameraYaw=0;showToast('Position reset')});
+ const speedEl=document.querySelector('#speed'),vehicleLabel=document.querySelector('#vehicleLabel');
+ // keyboard support for desktop testing
+ const keys={};addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key===' ')state.velY=6.2});addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+ function clampWorld(obj){obj.position.x=Math.max(-190,Math.min(190,obj.position.x));obj.position.z=Math.max(-190,Math.min(190,obj.position.z))}
+ const clock=new THREE.Clock();let walkT=0;
+ function animate(){
+   requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.04);
+   let f=state.forward+(keys.w?1:0)-(keys.s?1:0),s=state.side+(keys.d?1:0)-(keys.a?1:0);
+   f=Math.max(-1,Math.min(1,f));s=Math.max(-1,Math.min(1,s));
+   const moving=Math.abs(f)+Math.abs(s)>.08;
+   if(state.vehicle){
+     const v=state.vehicle;const drive=f;v.rotation.y += -s*dt*1.2;
+     const speed=(state.running?15:9)*drive;v.position.x += Math.sin(v.rotation.y)*speed*dt;v.position.z += Math.cos(v.rotation.y)*speed*dt;clampWorld(v);
+     // keep player hidden; camera follows vehicle
+     speedEl.textContent=Math.round(Math.abs(speed));vehicleLabel.textContent=v===car?'DRIVING CAR':'RIDING BIKE';
+   } else {
+     const speed=state.running?8.2:4.4;
+     if(moving){
+       const angle=state.cameraYaw+Math.atan2(s,f);
+       player.position.x+=Math.sin(angle)*Math.hypot(f,s)*speed*dt;
+       player.position.z+=Math.cos(angle)*Math.hypot(f,s)*speed*dt;
+       state.yaw=Math.atan2(Math.sin(angle),Math.cos(angle));player.rotation.y=state.yaw;
+       walkT+=dt*(state.running?12:7);armL.rotation.x=Math.sin(walkT)*.55;armR.rotation.x=-Math.sin(walkT)*.55;legL.rotation.x=-Math.sin(walkT)*.6;legR.rotation.x=Math.sin(walkT)*.6;
+     }else{armL.rotation.x=armR.rotation.x=legL.rotation.x=legR.rotation.x=0}
+     state.velY-=15*dt;player.position.y+=state.velY*dt;if(player.position.y<0){player.position.y=0;state.velY=0}
+     clampWorld(player);speedEl.textContent=moving?Math.round(speed):0;vehicleLabel.textContent='ON FOOT';
+   }
+   const target=state.vehicle||player;
+   const desiredYaw=state.cameraYaw;
+   const dist=state.vehicle?10:7.5, height=state.vehicle?4.8:3.4;
+   const camX=target.position.x-Math.sin(desiredYaw)*dist;
+   const camZ=target.position.z-Math.cos(desiredYaw)*dist;
+   const camY=target.position.y+height+state.cameraPitch*4;
+   camera.position.lerp(new THREE.Vector3(camX,camY,camZ),1-Math.pow(.001,dt));
+   camera.lookAt(target.position.x,target.position.y+(state.vehicle?1.2:1.35),target.position.z);
+   renderer.render(scene,camera);
+ }
+ addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5))});
+ document.querySelector('#loading').style.display='none';
+ showToast('Explore the city — walk to the car or bike');
+ animate();
+} catch(err) {
+ loadText.textContent='Could not load the 3D engine. Check your internet and reopen this page.';
+ console.error(err);
+}
+</script>
+</body>
+</html>
